@@ -8,3 +8,7 @@ preview_urls = false
 directory = "./public"
 binding = "ASSETS"
 run_worker_first = true
+
+# Application-level fail-closed guard. This does not change Cloudflare billing settings.
+[vars]
+FREE_ONLY = "true"
