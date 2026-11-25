@@ -16,6 +16,7 @@ const BASE={
 let data=structuredClone(BASE);
 
 let syncing=false;
+let quotaBlocked=false;
 let lastSyncTime=null;
 const state={tab:'overview',period:'snapshot',from:BASE.period.from,to:BASE.period.to,source:'all',device:'all',form:'all',imported:false};
 const $=id=>document.getElementById(id);
@@ -182,11 +183,13 @@ function updateSyncIndicator(){const el=$('syncIndicator');if(!el)return;
 }
 async function syncFromMetrika(){
   if(syncing)return;
+  if(quotaBlocked){showSyncToast('Достигнут лимит бесплатного API. Синхронизация остановлена. Платный тариф не включается.');return;}
   const button=$('syncButton');syncing=true;button.disabled=true;button.textContent='↻ Обновляем…';
   const from=state.from,to=state.to;
   try {
     const response=await fetch('/api/sync?from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to),{method:'GET',credentials:'same-origin',cache:'no-store'});
     let payload;try{payload=await response.json()}catch(_){throw new Error('Неверный ответ сервера')}
+    if(response.status===429){quotaBlocked=true;throw new Error(payload.error||'Достигнут лимит бесплатного API. Повторные запросы отключены.');}
     if(!response.ok)throw new Error(payload.error||('HTTP '+response.status));
     if(!payload.summary||!Array.isArray(payload.forms)||!payload.period||payload.syncMeta?.origin!=='yandex_api')throw new Error('Ошибка формата отчёта');
     if(state.from!==from||state.to!==to){showSyncToast('Период изменился. Нажмите «Синхронизировать» для выбранных дат.');return;}
@@ -197,9 +200,9 @@ async function syncFromMetrika(){
     lastSyncTime=new Date();updateSyncIndicator();render();
     showSyncToast('Данные обновлены · '+n(data.summary.visits)+' визитов · '+data.period.from+' — '+data.period.to);
   } catch(e){showSyncToast('Синхронизация не удалась: '+(e?.message||'неизвестная ошибка')+'; старые данные не изменены.');}
-  finally{syncing=false;button.disabled=false;button.textContent='↻ Синхронизировать';}
+  finally{syncing=false;button.disabled=quotaBlocked;button.textContent=quotaBlocked?'Лимит достигнут':'↻ Синхронизировать';}
 }
 function showSyncToast(text){const el=$('contextNote');el.className='context-note visible';$('contextNoteText').textContent=text;}
 $('syncButton').addEventListener('click',syncFromMetrika);
-window.addEventListener('load',()=>{ const today=new Date(),start=new Date(today);start.setDate(today.getDate()-29);const iso=d=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');state.period='last30';state.from=iso(start);state.to=iso(today);render();syncFromMetrika();});
+window.addEventListener('load',()=>{ const today=new Date(),start=new Date(today);start.setDate(today.getDate()-29);const iso=d=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');state.period='last30';state.from=iso(start);state.to=iso(today);render();});
 

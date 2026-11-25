@@ -24,8 +24,9 @@ test('Access gates every route before asset delivery and reporting',async t=>{
     const count=report.searchParams.get('metrics').split(',').length;
     return Response.json({data:[],totals:Array(count).fill(0)});
   });
-  const env={CF_ACCESS_TEAM:'example',CF_ACCESS_AUD:'dashboard',ASSETS:{fetch:()=>new Response('asset')}};
+  const env={FREE_ONLY:'true',CF_ACCESS_TEAM:'example',CF_ACCESS_AUD:'dashboard',ASSETS:{fetch:()=>new Response('asset')}};
   const query='/api/sync?from=2026-01-01&to=2026-01-02';
+  assert.equal((await worker.fetch(new Request('https://dashboard.test/'),{...env,FREE_ONLY:'false'})).status,503);
   function request(path,jwt,method='GET'){
     return worker.fetch(new Request('https://dashboard.test'+path,{method,headers:jwt?{'Cf-Access-Jwt-Assertion':jwt}:{}}),env);
   }

@@ -47,7 +47,7 @@ async function report(env,start,end,metrics,dimensions=null,extra={}){
   const res=await fetch(YANDEX+'?'+params.toString(),{method:'GET',headers:{Authorization:'OAuth '+env.METRIKA_READ_TOKEN,Accept:'application/json'},redirect:'error',signal:AbortSignal.timeout(25000)});
   if(res.status===401)throw new Error('OAuth-токен Метрики истёк или неверен');
   if(res.status===403)throw new Error('Нет доступа metrika:read к счётчику');
-  if(res.status===429)throw new Error('Лимит API Яндекс Метрики исчерпан');
+  if(res.status===420||res.status===429){const e=new Error('Лимит API Яндекс Метрики исчерпан. Синхронизация остановлена, переход на платный тариф запрещён.');e.status=429;throw e;}
   if(!res.ok)throw new Error('Яндекс Метрика вернула HTTP '+res.status);
   if(Number(res.headers.get('content-length')||0)>2_000_000)throw new Error('Слишком большой ответ Метрики');
   const text=await res.text();if(text.length>2_000_000)throw new Error('Слишком большой ответ Метрики');
@@ -99,6 +99,7 @@ export default {
  async fetch(request,env){
   const path=new URL(request.url).pathname;
   // Fail closed before serving any HTML or API data.
+  if(env.FREE_ONLY!=='true')return error('Режим только бесплатного тарифа не подтверждён. Сервис остановлен.',503);
   if(!env.CF_ACCESS_TEAM||!env.CF_ACCESS_AUD)return error('Сервис не настроен: обратитесь к администратору',503);
   let ok=false;try{ok=await isAuthorized(request,env)}catch(_){return error('Проверка корпоративной авторизации недоступна',503)}
   if(!ok)return error('Доступ только для сотрудников @atom.team',403);
@@ -109,7 +110,7 @@ export default {
     const u=new URL(request.url),start=u.searchParams.get('from'),end=u.searchParams.get('to');
     if(!/^\d{4}-\d{2}-\d{2}$/.test(start||'')||!/^\d{4}-\d{2}-\d{2}$/.test(end||''))return error('Неверный формат дат',400);
     const ds=Date.parse(start),de=Date.parse(end);if(!Number.isFinite(ds)||!Number.isFinite(de)||ds>de||(de-ds)>730*86400000||de>Date.now()+86400000)return error('Период не поддерживается',400);
-    try{return json(await build(env,start,end))}catch(e){return error('Не удалось получить отчёт: '+String(e.message||'ошибка').slice(0,150),502)}
+    try{return json(await build(env,start,end))}catch(e){return error('Не удалось получить отчёт: '+String(e.message||'ошибка').slice(0,150),e.status===429?429:502)}
   }
   if(path.startsWith('/api/'))return error('Нет такого API',404);
   const asset=await env.ASSETS.fetch(request);
