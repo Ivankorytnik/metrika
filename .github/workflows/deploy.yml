@@ -1,0 +1,61 @@
+name: test-and-deploy
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - run: node --test
+  deploy:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - name: Check Cloudflare credentials
+        id: creds
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::warning::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID не заданы, деплой пропущен"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else echo "ok=true" >> "$GITHUB_OUTPUT"; fi
+      - name: Ensure KV namespace
+        if: steps.creds.outputs.ok == 'true'
+        run: |
+          npm i -g wrangler@4 >/dev/null
+          ID=$(wrangler kv namespace list | jq -r '.[] | select(.title=="atom-metrika-cache") | .id' | head -1)
+          if [ -z "$ID" ]; then
+            wrangler kv namespace create atom-metrika-cache >/dev/null
+            ID=$(wrangler kv namespace list | jq -r '.[] | select(.title=="atom-metrika-cache") | .id' | head -1)
+          fi
+          test -n "$ID"
+          printf '\n[[kv_namespaces]]\nbinding = "CACHE"\nid = "%s"\n' "$ID" >> wrangler.toml
+      - name: Deploy Worker
+        if: steps.creds.outputs.ok == 'true'
+        run: wrangler deploy
+      - name: Set Worker secrets (only those provided)
+        if: steps.creds.outputs.ok == 'true'
+        env:
+          CF_ACCESS_TEAM: ${{ secrets.CF_ACCESS_TEAM }}
+          CF_ACCESS_AUD: ${{ secrets.CF_ACCESS_AUD }}
+          METRIKA_READ_TOKEN: ${{ secrets.METRIKA_READ_TOKEN }}
+        run: |
+          for k in CF_ACCESS_TEAM CF_ACCESS_AUD METRIKA_READ_TOKEN; do
+            v="${!k}"; if [ -n "$v" ]; then printf '%s' "$v" | wrangler secret put "$k" >/dev/null && echo "$k set"; fi
+          done
