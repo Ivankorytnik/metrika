@@ -61,7 +61,7 @@ function rows(report,lookup){return (report.data||[]).slice(0,100).map(row=>{
   const v=row.metrics||[];
   return {id:String(mapped[0]).slice(0,50),label:String(mapped[1]).slice(0,90),color:mapped[2],visits:num(v[0]),visitors:num(v[1]),bounce:flt(v[2])};
 });}
-async function build(env,start,end){
+export async function build(env,start,end){
   const overview=await report(env,start,end,['ym:s:visits','ym:s:users','ym:s:pageviews']);
   if(!Array.isArray(overview.totals)||overview.totals.length<3)throw new Error('Нет основных показателей');
   const [visits,visitors,pageviews]=overview.totals.slice(0,3).map(num);
