@@ -8,3 +8,10 @@ preview_urls = false
 directory = "./public"
 binding = "ASSETS"
 run_worker_first = true
+
+# Ежечасная синхронизация отчёта за последние 30 дней (бесплатный тариф Workers).
+[triggers]
+crons = ["17 * * * *"]
+
+# Привязка KV (CACHE) добавляется в CI автоматически: workflow находит или создаёт
+# пространство atom-metrika-cache и дописывает его id перед деплоем.

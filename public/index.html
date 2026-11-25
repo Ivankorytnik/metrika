@@ -62,6 +62,15 @@
 }
 @media(max-width:390px){.flow-row{grid-template-columns:25px minmax(0,1fr) auto;gap:5px}.flow-row .measure{min-width:80px}}
 
+
+/* v3: конструктор графиков */
+.b-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}.b-grid .filter{font-size:10px;text-transform:uppercase;letter-spacing:1.2px;font-weight:800;color:#8b9290}.b-grid select,.b-grid input{border:0;background:transparent;font-size:13px;font-weight:750;color:var(--ink);padding:3px 0;text-transform:none;letter-spacing:0;width:100%}
+.b-buttons{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:16px 0 6px}.b-period{font-size:12px}.b-out{margin-top:12px}
+.b-total{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:6px 0 12px}.b-total span{font-size:11px;text-transform:uppercase;letter-spacing:1.4px;color:#8b9290;font-weight:800}.b-total strong{font-size:38px;letter-spacing:-1.4px;line-height:1}.b-total small{color:var(--muted)}
+.b-svg{width:100%;height:auto;display:block}.b-bars{display:flex;flex-direction:column;gap:8px}.b-bar{display:grid;grid-template-columns:minmax(110px,260px) 1fr minmax(60px,auto);gap:10px;align-items:center;font-size:12px}.b-lab{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.b-track{background:#f0f2ee;border-radius:6px;height:12px;overflow:hidden}.b-track i{display:block;height:100%;background:var(--violet);border-radius:6px}.b-bar b{text-align:right;font-variant-numeric:tabular-nums}
+.b-warn{font-size:12px;color:#6d6640;background:#fbf8e6;border-radius:10px;padding:8px 11px;margin:0 0 8px}.b-error{color:#b3453d;background:#ffe9e5;border-radius:12px;padding:12px 14px;font-size:13px}.b-empty{color:var(--muted);padding:18px;border:1px dashed var(--line);border-radius:14px;font-size:13px}
+.b-grid input::placeholder{color:#b5bab7;font-weight:500}.b-details{margin-top:12px;font-size:12px}.b-details summary{cursor:pointer;color:#544bd3;font-weight:750}.b-saved{margin-bottom:14px}.b-actions{display:flex;gap:6px}
+@media(max-width:650px){.b-bar{grid-template-columns:minmax(80px,120px) 1fr auto}.b-total strong{font-size:30px}}
 </style>
 </head>
 <body>
@@ -72,11 +81,12 @@
     <nav class="nav" id="nav">
       <button class="active" type="button" data-tab="overview" aria-current="page"><span class="nav-icon">▦</span><span class="nav-label">Обзор</span></button>
       <button type="button" data-tab="charts"><span class="nav-icon">▥</span><span class="nav-label">Графики</span></button>
+      <button type="button" data-tab="builder"><span class="nav-icon">✎</span><span class="nav-label">Конструктор</span></button>
       <button type="button" data-tab="funnel"><span class="nav-icon">◇</span><span class="nav-label">Воронка форм</span></button>
       <button type="button" data-tab="quality"><span class="nav-icon">◉</span><span class="nav-label">Качество данных</span></button>
       <button type="button" data-tab="audit"><span class="nav-icon">✳</span><span class="nav-label">Оценка данных</span></button>
     </nav>
-    <div class="side-bottom"><div class="tiny"><i class="status-dot"></i>Локальный отчёт<br>API только для чтения</div><div class="side-counter"><strong>Счётчик № 93465127</strong>atom.auto - NEW</div></div>
+    <div class="side-bottom"><div class="tiny"><i class="status-dot"></i>Закрытый доступ @atom.team<br>API только для чтения</div><div class="side-counter"><strong>Счётчик № 93465127</strong>atom.auto - NEW</div></div>
   </aside>
   <main class="main">
     <div class="mast"><div class="crumb"><span class="mini-stamp">AT/</span> Аналитика <span style="color:#c7cbc8">/</span> Яндекс Метрика</div><div class="top-tools"><span class="chip" id="syncIndicator"><i></i>Ожидаем синхронизацию</span><button id="syncButton" class="round-btn sync-button" type="button" title="Получить свежие показатели из API Яндекс Метрики">↻ Синхронизировать</button><button id="dataButton" class="round-btn" type="button" title="Импортировать JSON"><span aria-hidden="true">↥</span> Загрузить данные</button></div></div>
@@ -91,11 +101,12 @@
     <div class="custom-period" id="customPeriod"><label>С даты<input type="date" id="dateFrom" value="2026-09-01" /></label><label>По дату<input type="date" id="dateTo" value="2026-10-05" /></label><button class="mini-btn" type="button" id="applyPeriod">Применить</button></div>
     <div class="context-note" id="contextNote" role="status"><span class="note-icon">ⓘ</span><span id="contextNoteText"></span></div>
     <div id="content"></div>
-    <footer><span>ATOM / DIGITAL ANALYTICS · Локальная HTML-страница · 2026</span><span>Источники: Метрика · Запросы к API выполняет сервер.</span></footer>
+    <footer><span>ATOM / DIGITAL ANALYTICS · Закрытый дашборд · 2026</span><span>Источники: Метрика · Запросы к API выполняет сервер.</span></footer>
   </main>
 </div>
 <input class="import-input" type="file" id="jsonUpload" accept=".json,application/json" />
 
 <script src="/dashboard.js"></script>
+<script src="/builder.js"></script>
 </body>
 </html>

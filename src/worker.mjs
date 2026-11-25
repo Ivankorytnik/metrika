@@ -95,21 +95,115 @@ async function build(env,start,end){
   warnings.push('Конверсия по этапам не подтверждена на уровне последовательных действий одних пользователей.');
   return {period:{from:start,to:end},summary:{visits,visitors,pageviews,pageviewsOther:null,approxPageviews:false,comparison:{}},sourceTotal,sources,devices,forms,goalEvidence,syncMeta:{origin:'yandex_api',readOnly:true,attribution:'cross_device_last_significant',goalUnit:'unique_users',warnings,sampled:Boolean(overview.sampled||srcRep.sampled||devRep.sampled)}};
 }
+
+// ---- Chart builder: strict whitelist, nothing user-supplied reaches the API unchecked.
+const QMETRICS={
+  visits:{t:'s',m:'ym:s:visits',label:'Визиты',unit:'визитов'},
+  users:{t:'s',m:'ym:s:users',label:'Уникальные посетители',unit:'людей'},
+  pageviews:{t:'s',m:'ym:s:pageviews',label:'Просмотры (все)',unit:'просмотров'},
+  pv_views:{t:'pv',m:'ym:pv:pageviews',label:'Просмотры страницы',unit:'просмотров'},
+  pv_users:{t:'pv',m:'ym:pv:users',label:'Посетители страницы',unit:'людей'},
+  goal_users:{t:'s',goal:'users',label:'Цель: уникальные посетители',unit:'людей'},
+  goal_reaches:{t:'s',goal:'reaches',label:'Цель: достижения',unit:'достижений'},
+};
+const QDIMS={
+  s:{none:null,day:'ym:s:date',week:'ym:s:startOfWeek',month:'ym:s:startOfMonth',source:'ym:s:<attribution>TrafficSource',device:'ym:s:deviceCategory',entry:'ym:s:startURLPath'},
+  pv:{none:null,day:'ym:pv:date',week:'ym:pv:startOfWeek',month:'ym:pv:startOfMonth',page:'ym:pv:URLPath'},
+};
+const TIME_DIMS=new Set(['day','week','month']);
+const SITES={all:null,pro:'pro.atom.auto'};
+const qCache=new Map();
+function validPeriod(start,end){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(start||'')||!/^\d{4}-\d{2}-\d{2}$/.test(end||''))return 'Неверный формат дат';
+  const ds=Date.parse(start),de=Date.parse(end);
+  if(!Number.isFinite(ds)||!Number.isFinite(de)||ds>de||(de-ds)>730*86400000||de>Date.now()+86400000)return 'Период не поддерживается';
+  return null;
+}
+export function parseQuery(u){
+  const metric=u.searchParams.get('metric')||'',dim=u.searchParams.get('dim')||'none',site=u.searchParams.get('site')||'all';
+  const page=u.searchParams.get('page')||'',match=u.searchParams.get('match')||'exact',goal=u.searchParams.get('goal')||'';
+  const from=u.searchParams.get('from'),to=u.searchParams.get('to');
+  const M=QMETRICS[metric];if(!M)return {error:'Неизвестный показатель'};
+  if(!Object.hasOwn(QDIMS[M.t],dim))return {error:'Этот разрез недоступен для выбранного показателя'};
+  if(!Object.hasOwn(SITES,site))return {error:'Неизвестный сайт'};
+  if(page&&!/^\/[A-Za-z0-9\-._~\/%]{0,200}$/.test(page))return {error:'Путь страницы должен начинаться с / и содержать только латиницу, цифры и -._~/%'};
+  if(!['exact','contains'].includes(match))return {error:'Неверный режим сравнения'};
+  if(M.goal&&!Object.hasOwn(GOAL_NAMES,goal))return {error:'Выберите цель из списка'};
+  const pe=validPeriod(from,to);if(pe)return {error:pe};
+  const p=M.t==='pv'?'ym:pv:':'ym:s:';
+  const filters=[];
+  if(SITES[site])filters.push(`${M.t==='pv'?'ym:pv:URLDomain':'ym:s:startURLDomain'}=='${SITES[site]}'`);
+  if(page)filters.push(`${M.t==='pv'?'ym:pv:URLPath':'ym:s:startURLPath'}${match==='exact'?'==':'=@'}'${page}'`);
+  const apiMetric=M.goal?`ym:s:goal${goal}${M.goal}`:M.m;
+  const extra={};
+  if(filters.length)extra.filters=filters.join(' AND ');
+  if(dim==='source')extra.attribution='cross_device_last_significant';
+  const dimension=QDIMS[M.t][dim];
+  if(dimension)extra.sort=TIME_DIMS.has(dim)?dimension:'-'+apiMetric;
+  if(dimension)extra.limit=TIME_DIMS.has(dim)?'1000':'50';
+  return {metric,dim,site,page,match,goal,from,to,M,apiMetric,dimension,extra,prefix:p};
+}
+async function runQuery(env,q){
+  const key=JSON.stringify([q.apiMetric,q.dimension,q.extra,q.from,q.to]);
+  const hit=qCache.get(key);if(hit&&hit.expires>Date.now())return hit.value;
+  const rep=await report(env,q.from,q.to,[q.apiMetric],q.dimension,q.extra);
+  const lookup=q.dim==='source'?SOURCE:q.dim==='device'?DEVICE:{};
+  const rowsOut=(rep.data||[]).slice(0,1000).map(row=>{
+    const d=(row.dimensions||[{}])[0]||{};
+    const id=String(d.id??d.name??'');
+    const label=lookup[id]?lookup[id][1]:String(d.name??(id||'Не определено'));
+    return {key:id.slice(0,200),label:label.slice(0,200),value:num((row.metrics||[])[0])};
+  });
+  const total=Array.isArray(rep.totals)?num(rep.totals[0]):null;
+  const value={period:{from:q.from,to:q.to},metric:{id:q.metric,label:q.M.label,unit:q.M.unit},goal:q.goal?{id:q.goal,label:GOAL_NAMES[q.goal]}:null,dim:q.dim,site:q.site,page:q.page||null,match:q.match,rows:rowsOut,total,sampled:Boolean(rep.sampled),notes:q.M.t==='s'&&q.page?['Для показателей визитов фильтр страницы работает по странице входа.']:[],fetchedAt:new Date().toISOString()};
+  if(qCache.size>200)qCache.clear();
+  qCache.set(key,{value,expires:Date.now()+10*60*1000});
+  return value;
+}
+// ---- Cache of the default report (KV is optional: without it every sync is live).
+function isoDay(d){return d.toISOString().slice(0,10);}
+export function defaultPeriod(now=new Date()){const end=new Date(now);const start=new Date(now);start.setUTCDate(start.getUTCDate()-29);return {from:isoDay(start),to:isoDay(end)};}
+async function kvGet(env,key){if(!env.CACHE)return null;try{return await env.CACHE.get(key,'json')}catch(_){return null}}
+async function kvPut(env,key,val){if(!env.CACHE)return;try{await env.CACHE.put(key,JSON.stringify(val))}catch(_){}}
+async function syncAndStore(env,from,to){
+  const result=await build(env,from,to);
+  result.syncMeta.syncedAt=new Date().toISOString();
+  const d=defaultPeriod();
+  if(from===d.from&&to===d.to)await kvPut(env,'latest',result);
+  await kvPut(env,'status',{ok:true,at:result.syncMeta.syncedAt,from,to});
+  return result;
+}
 export default {
+ async scheduled(event,env,ctx){
+  if(!env.METRIKA_READ_TOKEN)return;
+  const {from,to}=defaultPeriod();
+  try{await syncAndStore(env,from,to)}
+  catch(e){const prev=await kvGet(env,'status')||{};await kvPut(env,'status',{...prev,ok:false,errorAt:new Date().toISOString(),error:String(e.message||'ошибка').slice(0,150)});}
+ },
  async fetch(request,env){
-  const path=new URL(request.url).pathname;
+  const url=new URL(request.url),path=url.pathname;
   // Fail closed before serving any HTML or API data.
   if(!env.CF_ACCESS_TEAM||!env.CF_ACCESS_AUD)return error('Сервис не настроен: обратитесь к администратору',503);
   let ok=false;try{ok=await isAuthorized(request,env)}catch(_){return error('Проверка корпоративной авторизации недоступна',503)}
   if(!ok)return error('Доступ только для сотрудников @atom.team',403);
   if(request.method!=='GET')return error('Только чтение (GET)',405);
-  if(path==='/api/health')return json({ready:Boolean(env.METRIKA_READ_TOKEN),counterId:COUNTER,readOnly:true});
+  if(path==='/api/health')return json({ready:Boolean(env.METRIKA_READ_TOKEN),counterId:COUNTER,readOnly:true,cache:Boolean(env.CACHE)});
+  if(path==='/api/status')return json({ready:Boolean(env.METRIKA_READ_TOKEN),cache:Boolean(env.CACHE),status:await kvGet(env,'status'),defaultPeriod:defaultPeriod()});
+  if(path==='/api/meta')return json({goals:Object.entries(GOAL_NAMES).map(([id,label])=>({id,label})),metrics:Object.entries(QMETRICS).map(([id,m])=>({id,label:m.label,unit:m.unit,table:m.t,goal:Boolean(m.goal),dims:Object.keys(QDIMS[m.t])})),sites:[{id:'all',label:'Все сайты счётчика'},{id:'pro',label:'pro.atom.auto'}]});
   if(path==='/api/sync'){
     if(!env.METRIKA_READ_TOKEN)return error('Синхронизация ещё не подключена',503);
-    const u=new URL(request.url),start=u.searchParams.get('from'),end=u.searchParams.get('to');
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(start||'')||!/^\d{4}-\d{2}-\d{2}$/.test(end||''))return error('Неверный формат дат',400);
-    const ds=Date.parse(start),de=Date.parse(end);if(!Number.isFinite(ds)||!Number.isFinite(de)||ds>de||(de-ds)>730*86400000||de>Date.now()+86400000)return error('Период не поддерживается',400);
-    try{return json(await build(env,start,end))}catch(e){return error('Не удалось получить отчёт: '+String(e.message||'ошибка').slice(0,150),502)}
+    const start=url.searchParams.get('from'),end=url.searchParams.get('to');
+    const pe=validPeriod(start,end);if(pe)return error(pe,400);
+    if(url.searchParams.get('force')!=='1'){
+      const cached=await kvGet(env,'latest');
+      if(cached&&cached.period?.from===start&&cached.period?.to===end&&Date.now()-Date.parse(cached.syncMeta?.syncedAt||0)<70*60*1000)return json({...cached,syncMeta:{...cached.syncMeta,fromCache:true}});
+    }
+    try{return json(await syncAndStore(env,start,end))}catch(e){return error('Не удалось получить отчёт: '+String(e.message||'ошибка').slice(0,150),502)}
+  }
+  if(path==='/api/query'){
+    if(!env.METRIKA_READ_TOKEN)return error('Синхронизация ещё не подключена',503);
+    const q=parseQuery(url);if(q.error)return error(q.error,400);
+    try{return json(await runQuery(env,q))}catch(e){return error('Метрика не вернула отчёт: '+String(e.message||'ошибка').slice(0,150),502)}
   }
   if(path.startsWith('/api/'))return error('Нет такого API',404);
   const asset=await env.ASSETS.fetch(request);

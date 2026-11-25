@@ -153,7 +153,7 @@ function renderAudit(){
       </div>
     </section>`;
 }
-function render(){initOptions();calloutContext();$('customPeriod').classList.toggle('visible',state.period==='custom');$('periodSelect').value=state.period;$('dateFrom').value=state.from;$('dateTo').value=state.to;const names={overview:['Сайт в <em>цифрах.</em>','Понимать путь пользователя важнее, чем просто считать посещения.'],charts:['Факты в <em>графиках.</em>','Источники, устройства и поведение — главные закономерности без лишнего шума.'],funnel:['От визита <em>к заявке.</em>','Выберите форму и смотрите только подтверждённые этапы взаимодействия.'],quality:['Честные <em>данные.</em>','Что измерено, что требует проверки и где значения нельзя смешивать.'],audit:['Что <em>добавить.</em>','Оценка полноты данных, риски и список задач для аналитики.']};$('pageTitle').innerHTML=names[state.tab][0];$('pageSubtitle').textContent=names[state.tab][1];document.querySelectorAll('#nav button').forEach(el=>{let active=el.dataset.tab===state.tab;el.classList.toggle('active',active);if(active)el.setAttribute('aria-current','page');else el.removeAttribute('aria-current');});$('content').innerHTML=data.syncMeta?.origin==='not_loaded'?noData('Нет загруженного отчёта','Выберите период и нажмите «Синхронизировать».'):({overview:renderOverview,charts:renderCharts,funnel:renderFunnel,quality:renderQuality,audit:renderAudit})[state.tab]();const secondary=$('formSelect2');if(secondary)secondary.addEventListener('change',e=>{state.form=e.target.value;render();});const template=$('downloadTemplate');if(template)template.addEventListener('click',downloadTemplate);const importHere=$('importHere');if(importHere)importHere.addEventListener('click',()=>$('jsonUpload').click());}
+function render(){initOptions();calloutContext();$('customPeriod').classList.toggle('visible',state.period==='custom');$('periodSelect').value=state.period;$('dateFrom').value=state.from;$('dateTo').value=state.to;const names={overview:['Сайт в <em>цифрах.</em>','Понимать путь пользователя важнее, чем просто считать посещения.'],charts:['Факты в <em>графиках.</em>','Источники, устройства и поведение — главные закономерности без лишнего шума.'],funnel:['От визита <em>к заявке.</em>','Выберите форму и смотрите только подтверждённые этапы взаимодействия.'],quality:['Честные <em>данные.</em>','Что измерено, что требует проверки и где значения нельзя смешивать.'],builder:['Свои <em>графики.</em>','Выберите показатель, разрез и страницу: график строится по живым данным Метрики.'],audit:['Что <em>добавить.</em>','Оценка полноты данных, риски и список задач для аналитики.']};$('pageTitle').innerHTML=names[state.tab][0];$('pageSubtitle').textContent=names[state.tab][1];document.querySelectorAll('#nav button').forEach(el=>{let active=el.dataset.tab===state.tab;el.classList.toggle('active',active);if(active)el.setAttribute('aria-current','page');else el.removeAttribute('aria-current');});$('content').innerHTML=state.tab==='builder'?window.renderBuilder():data.syncMeta?.origin==='not_loaded'?noData('Нет загруженного отчёта','Выберите период и нажмите «Синхронизировать».'):({overview:renderOverview,charts:renderCharts,funnel:renderFunnel,quality:renderQuality,audit:renderAudit})[state.tab]();const secondary=$('formSelect2');if(secondary)secondary.addEventListener('change',e=>{state.form=e.target.value;render();});const template=$('downloadTemplate');if(template)template.addEventListener('click',downloadTemplate);const importHere=$('importHere');if(importHere)importHere.addEventListener('click',()=>$('jsonUpload').click());}
 function reset(){data=structuredClone(BASE);lastSyncTime=null;updateSyncIndicator();Object.assign(state,{tab:'overview',period:'snapshot',from:BASE.period.from,to:BASE.period.to,source:'all',device:'all',form:'all',imported:false});render();}
 function downloadTemplate(){const sample=structuredClone(BASE);const blob=new Blob([JSON.stringify(sample,null,2)],{type:'application/json;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='atom_metrika_data_template.json';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);}
 function cleanNumber(x){if(x===null||x===undefined||x==='')return null;const v=Number(x);return Number.isFinite(v)&&v>=0?v:null;}
@@ -176,16 +176,16 @@ updateSyncIndicator();
 render();
 
 function updateSyncIndicator(){const el=$('syncIndicator');if(!el)return;
-  if(lastSyncTime){el.innerHTML='<i></i> API · '+safe(lastSyncTime.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}));}
+  if(lastSyncTime){el.innerHTML='<i></i> Синхронизировано · '+safe(lastSyncTime.toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}));}
   else if(state.imported){el.innerHTML='<i></i> JSON-импорт';}
   else{el.innerHTML='<i></i> Ожидаем синхронизацию';}
 }
-async function syncFromMetrika(){
+async function syncFromMetrika(force=true){
   if(syncing)return;
   const button=$('syncButton');syncing=true;button.disabled=true;button.textContent='↻ Обновляем…';
   const from=state.from,to=state.to;
   try {
-    const response=await fetch('/api/sync?from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to),{method:'GET',credentials:'same-origin',cache:'no-store'});
+    const response=await fetch('/api/sync?from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to)+(force?'&force=1':''),{method:'GET',credentials:'same-origin',cache:'no-store'});
     let payload;try{payload=await response.json()}catch(_){throw new Error('Неверный ответ сервера')}
     if(!response.ok)throw new Error(payload.error||('HTTP '+response.status));
     if(!payload.summary||!Array.isArray(payload.forms)||!payload.period||payload.syncMeta?.origin!=='yandex_api')throw new Error('Ошибка формата отчёта');
@@ -194,12 +194,12 @@ async function syncFromMetrika(){
     Object.assign(state,{period:'snapshot',from:payload.period.from,to:payload.period.to,source:'all',device:'all',imported:false});
     if(!data.forms.some(f=>f.id===state.form))state.form='all';
     $('periodSelect').querySelector('option[value="snapshot"]').textContent=`${data.period.from} — ${data.period.to}`;
-    lastSyncTime=new Date();updateSyncIndicator();render();
-    showSyncToast('Данные обновлены · '+n(data.summary.visits)+' визитов · '+data.period.from+' — '+data.period.to);
+    lastSyncTime=payload.syncMeta?.syncedAt?new Date(payload.syncMeta.syncedAt):new Date();updateSyncIndicator();render();
+    showSyncToast((payload.syncMeta?.fromCache?'Данные из автосинхронизации · ':'Данные обновлены · ')+n(data.summary.visits)+' визитов · '+data.period.from+' — '+data.period.to);
   } catch(e){showSyncToast('Синхронизация не удалась: '+(e?.message||'неизвестная ошибка')+'; старые данные не изменены.');}
   finally{syncing=false;button.disabled=false;button.textContent='↻ Синхронизировать';}
 }
 function showSyncToast(text){const el=$('contextNote');el.className='context-note visible';$('contextNoteText').textContent=text;}
-$('syncButton').addEventListener('click',syncFromMetrika);
-window.addEventListener('load',()=>{ const today=new Date(),start=new Date(today);start.setDate(today.getDate()-29);const iso=d=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');state.period='last30';state.from=iso(start);state.to=iso(today);render();syncFromMetrika();});
+$('syncButton').addEventListener('click',()=>syncFromMetrika(true));
+window.addEventListener('load',()=>{ const today=new Date(),start=new Date(today);start.setDate(today.getDate()-29);const iso=d=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');state.period='last30';state.from=iso(start);state.to=iso(today);render();syncFromMetrika(false);});
 

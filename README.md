@@ -1,13 +1,18 @@
 # ATOM Metrics
 
-Закрытый дашборд для @atom.team. Worker проверяет Cloudflare Access JWT до выдачи статических файлов и обработки API. В Git хранятся только исходники. Сервер выполняет GET-запросы к Reporting API счётчика 93465127.
+Закрытый дашборд по Яндекс Метрике (счётчик 93465127) для сотрудников @atom.team.
+Cloudflare Worker проверяет JWT Cloudflare Access до выдачи любых файлов и API и ходит в Reporting API только GET-запросами с токеном `metrika:read`. Без настроек Access Worker отвечает 503 и ничего не отдаёт.
 
-## Приёмка и публикация
+## Возможности
+- Обзор, графики, воронка форм, качество и оценка данных (вкладка «Оценка данных» показывает недостающие цели).
+- Конструктор графиков: показатель (визиты, уникальные, просмотры, просмотры и посетители страницы, цели), разрез (дни, недели, месяцы, источники, устройства, страницы), сайт, фильтр по пути страницы. Запросы проходят белый список на сервере.
+- Синхронизация: ежечасный cron пишет отчёт за 30 дней в KV, кнопка «Синхронизировать» запрашивает Метрику напрямую, на экране время последней успешной синхронизации.
 
-1. Выполнить `node --test` под Node 22+.
-2. Проверить в аккаунте планы Workers Free и Zero Trust Free, доступные бесплатные места и лимиты. При недостатке квоты остановить публикацию.
-3. Развернуть Worker без METRIKA_READ_TOKEN, с выключенными preview URLs. До задания CF_ACCESS_TEAM и CF_ACCESS_AUD обработчик закрыт.
-4. В Cloudflare Access защитить весь Worker (All traffic), проверить все привязанные имена и пути. Разрешить только точный почтовый домен atom.team через One-time PIN. Проверить отсутствие Bypass, общих разрешений и дополнительных способов входа. Указать в настройках Worker CF_ACCESS_TEAM и CF_ACCESS_AUD для этого приложения.
-5. Проверить снаружи корень, /index.html, /dashboard.js, /api/health и /api/sync на каждом имени. Без сессии ни один ответ не должен содержать актив приложения или данные. Проверить запрет для другого почтового домена и успешный вход по корпоративному OTP. После входа health.ready должен быть false до подключения источника.
-6. Только после этих проверок задать серверный секрет METRIKA_READ_TOKEN. У OAuth-приложения должно быть единственное разрешение metrika:read, у выделенной учётной записи доступ просмотра к нужному счётчику. Не передавать секрет в чат или Git.
-7. Сверить результат синхронизации за завершённый период с интерфейсом Метрики при той же атрибуции, повторить проверку анонимного и постороннего доступа.
+## Развёртывание (бесплатные тарифы)
+1. GitHub → Settings → Secrets and variables → Actions: `CLOUDFLARE_API_TOKEN` (шаблон «Edit Cloudflare Workers» + права Workers KV Storage: Edit), `CLOUDFLARE_ACCOUNT_ID`.
+2. Push в `main` запускает тесты и деплой (`.github/workflows/deploy.yml`). KV `atom-metrika-cache` создаётся автоматически.
+3. Cloudflare Zero Trust (Free) → Access → Applications → Self-hosted: домен `atom-metrika-dashboard.<subdomain>.workers.dev`, политика Allow → Emails ending in `@atom.team`, вход One-time PIN. Скопировать Application Audience (AUD).
+4. Секреты Worker (в GitHub Actions secrets или в Cloudflare → Worker → Settings → Variables): `CF_ACCESS_TEAM` (имя команды из `<team>.cloudflareaccess.com`), `CF_ACCESS_AUD`, `METRIKA_READ_TOKEN` (OAuth-токен с единственным правом `metrika:read`).
+5. Проверка: без входа `/`, `/dashboard.js`, `/api/sync` дают 403/503; вход с адресом @atom.team открывает дашборд.
+
+Тесты: `node --test` (Node 22+).
