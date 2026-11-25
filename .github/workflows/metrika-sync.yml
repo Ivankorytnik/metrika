@@ -1,0 +1,23 @@
+name: Metrika sync preparation
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: metrika-sync
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test
+      - name: Block live data until private delivery is configured
+        run: |
+          echo "Preparation only. No live data or secrets accessed."
